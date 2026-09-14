@@ -1,7 +1,6 @@
 /* V5 = V4 păstrat ca structură, cu catalog + șine DIN interactive. */
-const state={step:1,connection:null,power:null,board:null,items:[],ack:false,editing:null,dragged:null};
+const state={step:1,connection:null,power:null,board:null,items:[],ack:false,editing:null,dragged:null,selectedRail:0};
 const boards=[12,24,36,48];
-const fixed={general:{name:"Siguranță generală",modules:2},spd:{name:"SPD",modules:2}};
 
 const catalog=[
  {id:"mcb1n-10",type:"MCB 1P+N",group:"MCB 1P+N",name:"MCB 1P+N 10A",pole:"1P+N",modules:1,price:28},
@@ -12,6 +11,14 @@ const catalog=[
  {id:"mcb1n-40",type:"MCB 1P+N",group:"MCB 1P+N",name:"MCB 1P+N 40A",pole:"1P+N",modules:1,price:42},
  {id:"mcb1n-50",type:"MCB 1P+N",group:"MCB 1P+N",name:"MCB 1P+N 50A",pole:"1P+N",modules:1,price:49},
  {id:"mcb1n-63",type:"MCB 1P+N",group:"MCB 1P+N",name:"MCB 1P+N 63A",pole:"1P+N",modules:1,price:57},
+ {id:"mcb2-10",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 10A",pole:"2P",modules:2,price:42},
+ {id:"mcb2-16",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 16A",pole:"2P",modules:2,price:44},
+ {id:"mcb2-20",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 20A",pole:"2P",modules:2,price:47},
+ {id:"mcb2-25",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 25A",pole:"2P",modules:2,price:50},
+ {id:"mcb2-32",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 32A",pole:"2P",modules:2,price:54},
+ {id:"mcb2-40",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 40A",pole:"2P",modules:2,price:62},
+ {id:"mcb2-50",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 50A",pole:"2P",modules:2,price:72},
+ {id:"mcb2-63",type:"MCB 2P",group:"MCB 2P",name:"MCB 2P 63A",pole:"2P",modules:2,price:82},
  {id:"rccb-25",type:"RCCB / DDR",group:"RCCB / DDR",name:"RCCB 2P 25A / 30mA",pole:"2P",modules:2,price:92},
  {id:"rccb-40",type:"RCCB / DDR",group:"RCCB / DDR",name:"RCCB 2P 40A / 30mA",pole:"2P",modules:2,price:98},
  {id:"rccb-63",type:"RCCB / DDR",group:"RCCB / DDR",name:"RCCB 2P 63A / 30mA",pole:"2P",modules:2,price:110},
@@ -27,7 +34,7 @@ const catalog=[
  {id:"contactor-2p",type:"Contactor",group:"Contactor / releu",name:"Contactor 2P 25A",pole:"2P",modules:2,price:85},
  {id:"contactor-4p",type:"Contactor",group:"Contactor / releu",name:"Contactor 4P 25A",pole:"4P",modules:4,price:125}
 ];
-const groups=["Toate","MCB 1P+N","RCCB / DDR","RCBO","AFDD","SPD","Contactor / releu"];
+const groups=["Toate","MCB 1P+N","MCB 2P","RCCB / DDR","RCBO","AFDD","SPD","Contactor / releu"];
 const prices={general:95,spd:220,board:{12:110,24:160,36:220,48:290}};
 let selectedGroup="Toate";
 
@@ -43,17 +50,56 @@ function render(){
  if(state.step===3)renderConfig(s);
  if(state.step===4)renderSummary(s);
 }
-function chooseConn(x){state.connection=x;state.items=[];render()}
-function choosePower(x){state.power=x;render()}
-function chooseBoard(x){state.board=x;state.items=[];state.ack=false;render()}
+function generalAmps(connection,power){
+ const mono={5:25,7:32,11:50,15:63,18:80,22:100,25:125,30:160};
+ const tri={5:10,7:16,11:16,15:25,18:32,22:32,25:40,30:50};
+ return (connection==="tri"?tri:mono)[power] || 0;
+}
+function makeDefaultItem(kind){
+ const tri=state.connection==="tri";
+ if(kind==="general"){
+   const amp=generalAmps(state.connection,state.power);
+   return {uid:nextUid(),id:`general-${state.connection}-${amp}`,name:`MCB general ${tri?"4P":"2P"} ${amp}A`,type:"MCB general",group:"MCB",pole:tri?"4P":"2P",modules:tri?4:2,price:tri?180:95,fixedKind:"general",amp,row:0,slot:0};
+ }
+ return {uid:nextUid(),id:`spd-default-${state.connection}`,name:`SPD ${tri?"4P":"2P"}`,type:"SPD",group:"SPD",pole:tri?"4P":"2P",modules:tri?4:2,price:tri?360:220,fixedKind:"spd",amp:0,row:0,slot:tri?4:2};
+}
+function hasFixed(kind){return state.items.some(x=>x.fixedKind===kind)}
+function addDefaultsIfNeeded(){
+ if(!state.connection||!state.power||!state.board)return;
+ if(!hasFixed("general")){
+   const g=makeDefaultItem("general");
+   if(canPlace(g.modules,0,0))state.items.push(g);
+ }
+ if(!hasFixed("spd")){
+   const spd=makeDefaultItem("spd");
+   const p=findPlacement(spd.modules);
+   if(p){Object.assign(spd,p);state.items.push(spd);}
+ }
+}
+function updateDefaultGeneral(){
+ const g=state.items.find(x=>x.fixedKind==="general");
+ if(g){
+   const amp=generalAmps(state.connection,state.power);
+   Object.assign(g,{id:`general-${state.connection}-${amp}`,name:`MCB general ${state.connection==="tri"?"4P":"2P"} ${amp}A`,pole:state.connection==="tri"?"4P":"2P",modules:state.connection==="tri"?4:2,amp,price:state.connection==="tri"?180:95});
+ }
+}
+function chooseConn(x){state.connection=x;state.items=[];state.ack=false;state.selectedRail=0;if(state.power&&state.board)addDefaultsIfNeeded();render()}
+function choosePower(x){
+ const old=state.power; const g=state.items.find(x=>x.fixedKind==="general");
+ if(g){
+   const oldData={...g};
+   state.power=x; updateDefaultGeneral();
+   if(!canPlace(g.modules,g.row,g.slot,g.uid)){Object.assign(g,oldData);state.power=old;return alert("Puterea aleasă necesită un MCB general mai lat decât spațiul disponibil. Alege o altă putere sau eliberează spațiu în tablou.");}
+ } else state.power=x;
+ if(state.board)addDefaultsIfNeeded(); render()
+}
+function chooseBoard(x){state.board=x;state.items=[];state.ack=false;state.selectedRail=0;addDefaultsIfNeeded();render()}
 function next(){if(state.step===1&&(!state.connection||!state.power))return alert("Alege branșamentul și puterea maximă.");if(state.step===2&&!state.board)return alert("Alege dimensiunea tabloului.");if(state.step<4)state.step++;render()}
 function back(){if(state.step>1)state.step--;render()}
 
-function fixedModules(){return fixed.general.modules+fixed.spd.modules}
-function getUsed(){return fixedModules()+state.items.reduce((a,x)=>a+x.modules,0)}
+function getUsed(){return state.items.reduce((a,x)=>a+x.modules,0)}
 function occupiedMap(excludeUid=null){
  const rows=Math.ceil(state.board/12), occ=Array.from({length:rows},()=>Array(12).fill(false));
- for(let k=0;k<fixedModules();k++)occ[0][k]=true;
  state.items.forEach(x=>{if(x.uid===excludeUid)return;for(let k=0;k<x.modules;k++)if(x.row>=0&&x.row<rows&&x.slot+k<12)occ[x.row][x.slot+k]=true;});
  return occ;
 }
@@ -67,15 +113,16 @@ function componentIcon(b){
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="64" viewBox="0 0 ${w} 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fafafa"/><stop offset=".65" stop-color="#d9dde1"/><stop offset="1" stop-color="#aeb5bb"/></linearGradient></defs>${body}<rect x="${Math.max(9,w/2-22)}" y="34" width="44" height="7" rx="2" fill="#666e75"/></svg>`;
  return "data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg);
 }
-function iconFor(id){const b=catalog.find(x=>x.id===id);return b?componentIcon(b):""}
+function iconFor(id,item=null){const b=catalog.find(x=>x.id===id)||item;return b?componentIcon(b):""}
 
 function renderConfig(s){
+ addDefaultsIfNeeded();
  const used=getUsed(),pct=Math.round(used/state.board*100),rows=Math.ceil(state.board/12);
  const rowHtml=Array.from({length:rows},(_,r)=>{
    const cells=[]; let slot=0;
    while(slot<12){
      const item=state.items.find(x=>x.row===r&&x.slot===slot);
-     if(item){cells.push(`<button draggable="true" ondragstart="startItemDrag(event,${item.uid})" ondragend="endDrag()" class="module added item-span" style="grid-column:span ${item.modules}" onclick="openChange(${item.uid})" title="Schimbă sau mută ${item.name}"><img src="${iconFor(item.id)}" alt=""><span>${item.name.replace(/ 30mA| \/ 30mA/g,"")}</span></button>`);slot+=item.modules;}
+     if(item){cells.push(`<button draggable="true" ondragstart="startItemDrag(event,${item.uid})" ondragend="endDrag()" class="module added item-span ${item.fixedKind?"fixed-item":""}" style="grid-column:span ${item.modules}" onclick="openChange(${item.uid})" title="Schimbă sau mută ${item.name}"><img src="${iconFor(item.id,item)}" alt=""><span>${item.name.replace(/ 30mA| \/ 30mA/g,"")}</span></button>`);slot+=item.modules;}
      else {cells.push(`<div class="module empty drop-cell" data-row="${r}" data-slot="${slot}" ondragover="railDragOver(event)" ondrop="dropAt(event,${r},${slot})"></div>`);slot++;}
    }
    return `<div class="din-row"><div class="din-rail" data-row="${r}" ondragover="railDragOver(event)" ondrop="dropOnRail(event,${r})"><div class="rail-metal"></div><div class="rail-track"></div>${cells.join("")}</div><div class="rail-label">Șină DIN ${r+1}</div></div>`;
@@ -86,6 +133,7 @@ function renderConfig(s){
   <div class="board-header"><div><span class="board-kicker">CONFIGURAȚIE TABLOU</span><strong>Tablou ${state.board} posturi</strong><span>${state.connection==="tri"?"Trifazat":"Monofazat"} · ${state.power} kW</span></div><div class="board-status"><i></i> Configurabil</div></div>
   <div class="din-area">${rowHtml}</div><div class="board-hint">💡 Pe PC poți trage aparatele pe șină. Pe telefon folosește „Adaugă” și apoi „Mută”. Apasă pe un aparat pentru modificare.</div>
  </div>
+ <div class="rail-selector card"><div><strong>Șina pe care lucrezi</strong><span class="hint">Aparatele adăugate vor fi plasate pe șina selectată.</span></div><div class="rail-tabs">${Array.from({length:rows},(_,r)=>`<button class="${state.selectedRail===r?"selected":""}" onclick="selectRail(${r})">Șina ${r+1}</button>`).join("")}</div></div>
  <div class="occupancy"><strong>${used} / ${state.board} posturi ocupate</strong><span style="float:right">${pct}%</span><div class="bar"><div style="width:${Math.min(pct,100)}%"></div></div>${pct>75?`<div class="warning">⚠️ <strong>Ai depășit 75% din spațiul tabloului.</strong><br>Păstrează, pe cât posibil, o rezervă pentru extinderi viitoare.<div class="ack"><button class="btn primary" onclick="ackWarning()">Am înțeles</button></div></div>`:""}${state.ack?`<p class="hint">✓ Ai confirmat avertizarea.</p>`:""}</div>
  <div class="catalog card"><div class="catalog-head"><div><h2>Catalog aparataj</h2><p class="hint">Alege categoria, apoi adaugă aparatul. 1P+N ocupă <strong>1 modul</strong>.</p></div><select onchange="setGroup(this.value)">${groups.map(g=>`<option ${selectedGroup===g?"selected":""}>${g}</option>`).join("")}</select></div>
  <div class="catalog-grid">${filtered.map(b=>`<div class="component" draggable="true" ondragstart="startCatalogDrag(event,'${b.id}')"><img src="${componentIcon(b)}" alt="${b.name}"><div class="component-info"><strong>${b.name}</strong><small>${b.pole} · ${b.modules} ${b.modules===1?"modul":"module"}</small><b>${b.price} lei</b></div><button class="add-btn" onclick="addBreaker('${b.id}')">＋ Adaugă</button></div>`).join("")}</div></div>
@@ -93,6 +141,7 @@ function renderConfig(s){
  </div>`;
 }
 function setGroup(v){selectedGroup=v;render()}
+function selectRail(r){state.selectedRail=r;render()}
 function startCatalogDrag(e,id){state.dragged={kind:"new",id};e.dataTransfer?.setData("text/plain",id);e.dataTransfer?.setData("application/x-configurator","new")}
 function startItemDrag(e,uid){state.dragged={kind:"move",uid};e.stopPropagation();e.dataTransfer?.setData("text/plain",String(uid));e.dataTransfer?.setData("application/x-configurator","move")}
 function endDrag(){state.dragged=null;document.querySelectorAll('.drop-cell,.din-rail').forEach(x=>x.classList.remove('drop-hover'))}
@@ -101,16 +150,17 @@ function dropAt(e,row,slot){e.preventDefault();e.stopPropagation();handleDrop(ro
 function dropOnRail(e,row){e.preventDefault();
  let rect=e.currentTarget.getBoundingClientRect();let x=e.clientX-rect.left;let inner=Math.max(0,x-7);let slot=Math.max(0,Math.min(11,Math.floor(inner/(rect.width/12))));handleDrop(row,slot);endDrag();}
 function handleDrop(row,slot){const d=state.dragged;if(!d)return;if(d.kind==='new'){const b=catalog.find(x=>x.id===d.id);if(!b)return;if(!canPlace(b.modules,row,slot))return showToast("Nu încape aici. Aparatul a rămas în catalog.");state.items.push({...b,amp:parseInt((b.name.match(/\d+/)||[0])[0]),row,slot,uid:nextUid()});render();return;}const idx=state.items.findIndex(x=>x.uid===d.uid);if(idx<0)return;const item=state.items[idx];if(!canPlace(item.modules,row,slot,item.uid))return showToast("Poziția nu este disponibilă. Aparatul a rămas pe loc.");item.row=row;item.slot=slot;render();}
-function addBreaker(id){const b=catalog.find(x=>x.id===id);if(!b)return;const p=findPlacement(b.modules);if(!p)return showToast("Nu mai există suficient spațiu în tablou.");state.items.push({...b,amp:parseInt((b.name.match(/\d+/)||[0])[0]),row:p.row,slot:p.slot,uid:nextUid()});render();}
+function addBreaker(id){const b=catalog.find(x=>x.id===id);if(!b)return;const p=findPlacementOnRail(b.modules,state.selectedRail);if(!p)return showToast("Nu mai există suficient spațiu pe șina selectată.");state.items.push({...b,amp:parseInt((b.name.match(/\d+/)||[0])[0]),row:p.row,slot:p.slot,uid:nextUid()});render();}
+function findPlacementOnRail(modules,row){const occ=occupiedMap();if(row<0||row>=occ.length)return null;for(let slot=0;slot<=12-modules;slot++){let ok=true;for(let k=0;k<modules;k++)if(occ[row][slot+k])ok=false;if(ok)return{row,slot};}return null}
 
 function openChange(uid){state.editing=uid;renderChangeModal()}
-function renderChangeModal(){const item=state.items.find(x=>x.uid===state.editing);if(!item)return;const modal=document.createElement('div');modal.className='modal-backdrop';modal.innerHTML=`<div class="change-modal"><button class="modal-close" onclick="closeChange()">×</button><h2>Schimbă aparatul</h2><p class="modal-sub">Poți alege orice aparat din catalog, chiar dacă are alt număr de module.</p><div class="change-current"><img src="${iconFor(item.id)}"><div><strong>${item.name}</strong><small>Șină DIN ${item.row+1} · poziția ${item.slot+1} · ${item.modules} ${item.modules===1?'modul':'module'}</small></div></div><label class="modal-label">Alege noul aparat</label><select id="changeSelect" class="change-select">${catalog.map(b=>`<option value="${b.id}" ${b.id===item.id?'selected':''}>${b.name} · ${b.modules} ${b.modules===1?'modul':'module'} · ${b.price} lei</option>`).join('')}</select><button class="btn primary wide" onclick="changeBreaker()">Aplică schimbarea</button><div class="move-box"><strong>Mută aparatul</strong><p class="hint">Alege șina și poziția de început.</p><div class="move-fields"><select id="moveRow">${Array.from({length:Math.ceil(state.board/12)},(_,r)=>`<option value="${r}" ${r===item.row?'selected':''}>Șina DIN ${r+1}</option>`).join('')}</select><select id="moveSlot">${Array.from({length:12},(_,x)=>`<option value="${x}" ${x===item.slot?'selected':''}>Poziția ${x+1}</option>`).join('')}</select></div><button class="btn secondary wide" onclick="moveFromModal()">Mută</button></div><button class="delete-item" onclick="removeBreaker()">Șterge această siguranță</button></div>`;document.body.appendChild(modal)}
+function renderChangeModal(){const item=state.items.find(x=>x.uid===state.editing);if(!item)return;const modal=document.createElement('div');modal.className='modal-backdrop';modal.innerHTML=`<div class="change-modal"><button class="modal-close" onclick="closeChange()">×</button><h2>Schimbă aparatul</h2><p class="modal-sub">Poți alege orice aparat din catalog, chiar dacă are alt număr de module.</p><div class="change-current"><img src="${iconFor(item.id,item)}"><div><strong>${item.name}</strong><small>Șină DIN ${item.row+1} · poziția ${item.slot+1} · ${item.modules} ${item.modules===1?'modul':'module'}</small></div></div><label class="modal-label">Alege noul aparat</label><select id="changeSelect" class="change-select">${catalog.map(b=>`<option value="${b.id}" ${b.id===item.id?'selected':''}>${b.name} · ${b.modules} ${b.modules===1?'modul':'module'} · ${b.price} lei</option>`).join('')}</select><button class="btn primary wide" onclick="changeBreaker()">Aplică schimbarea</button><div class="move-box"><strong>Mută aparatul</strong><p class="hint">Alege șina și poziția de început.</p><div class="move-fields"><select id="moveRow">${Array.from({length:Math.ceil(state.board/12)},(_,r)=>`<option value="${r}" ${r===item.row?'selected':''}>Șina DIN ${r+1}</option>`).join('')}</select><select id="moveSlot">${Array.from({length:12},(_,x)=>`<option value="${x}" ${x===item.slot?'selected':''}>Poziția ${x+1}</option>`).join('')}</select></div><button class="btn secondary wide" onclick="moveFromModal()">Mută</button></div><button class="delete-item" onclick="removeBreaker()">Șterge această siguranță</button></div>`;document.body.appendChild(modal)}
 function closeChange(){state.editing=null;document.querySelector('.modal-backdrop')?.remove()}
-function changeBreaker(){const idx=state.items.findIndex(x=>x.uid===state.editing);if(idx<0)return;const b=catalog.find(x=>x.id===document.getElementById('changeSelect').value);if(!b)return;const item=state.items[idx];if(!canPlace(b.modules,item.row,item.slot,item.uid))return showToast("Noua aparatură nu încape în poziția actuală. Alege altă poziție sau păstrează aparatul actual.");Object.assign(item,{id:b.id,name:b.name,type:b.type,group:b.group,pole:b.pole,modules:b.modules,price:b.price,amp:parseInt((b.name.match(/\d+/)||[0])[0])});closeChange();render()}
+function changeBreaker(){const idx=state.items.findIndex(x=>x.uid===state.editing);if(idx<0)return;const b=catalog.find(x=>x.id===document.getElementById('changeSelect').value);if(!b)return;const item=state.items[idx];if(!canPlace(b.modules,item.row,item.slot,item.uid))return showToast("Noua aparatură nu încape în poziția actuală. Alege altă poziție sau păstrează aparatul actual.");Object.assign(item,{id:b.id,name:b.name,type:b.type,group:b.group,pole:b.pole,modules:b.modules,price:b.price,amp:parseInt((b.name.match(/\d+/)||[0])[0]),fixedKind:null});closeChange();render()}
 function moveFromModal(){const idx=state.items.findIndex(x=>x.uid===state.editing);if(idx<0)return;const item=state.items[idx],row=+document.getElementById('moveRow').value,slot=+document.getElementById('moveSlot').value;if(!canPlace(item.modules,row,slot,item.uid))return showToast("Poziția aleasă nu este disponibilă.");item.row=row;item.slot=slot;closeChange();render()}
 function removeBreaker(){const idx=state.items.findIndex(x=>x.uid===state.editing);if(idx<0)return;state.items.splice(idx,1);closeChange();render()}
 function ackWarning(){state.ack=true;render()}
 function showToast(msg){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=msg;t.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>t.classList.remove('show'),2600)}
 
-function renderSummary(s){const used=getUsed();const rows=[["Tablou",1,prices.board[state.board]],["Siguranță generală",1,prices.general],["SPD",1,prices.spd]];state.items.forEach(x=>{const found=rows.find(r=>r[0]===x.name);if(found)found[1]++;else rows.push([x.name,1,x.price])});const total=rows.reduce((a,r)=>a+r[1]*r[2],0);s.innerHTML=`<div class="card"><h2>Rezumatul configurației</h2><p>Ai configurat un tablou ${state.board} posturi pentru branșament ${state.connection==='tri'?'trifazat':'monofazat'}, ${state.power} kW.</p><table class="bom"><thead><tr><th>Componentă</th><th>Cant.</th><th>Preț unitar</th><th>Total</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]} lei</td><td><strong>${r[1]*r[2]} lei</strong></td></tr>`).join('')}</tbody></table><div class="total">Total materiale: ${total} lei</div><p class="hint">${used} / ${state.board} posturi ocupate · ${Math.round(used/state.board*100)}%</p><div class="actions"><button class="btn secondary" onclick="back()">← Modifică</button><button class="btn primary" onclick="alert('Exportul PDF și trimiterea configurației vor fi adăugate ulterior.')">Finalizează configurația</button></div></div>`}
+function renderSummary(s){const used=getUsed();const rows=[["Tablou",1,prices.board[state.board]]];state.items.forEach(x=>{const found=rows.find(r=>r[0]===x.name);if(found)found[1]++;else rows.push([x.name,1,x.price])});const total=rows.reduce((a,r)=>a+r[1]*r[2],0);s.innerHTML=`<div class="card"><h2>Rezumatul configurației</h2><p>Ai configurat un tablou ${state.board} posturi pentru branșament ${state.connection==='tri'?'trifazat':'monofazat'}, ${state.power} kW.</p><table class="bom"><thead><tr><th>Componentă</th><th>Cant.</th><th>Preț unitar</th><th>Total</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]} lei</td><td><strong>${r[1]*r[2]} lei</strong></td></tr>`).join('')}</tbody></table><div class="total">Total materiale: ${total} lei</div><p class="hint">${used} / ${state.board} posturi ocupate · ${Math.round(used/state.board*100)}%</p><div class="actions"><button class="btn secondary" onclick="back()">← Modifică</button><button class="btn primary" onclick="alert('Exportul PDF și trimiterea configurației vor fi adăugate ulterior.')">Finalizează configurația</button></div></div>`}
 render();
