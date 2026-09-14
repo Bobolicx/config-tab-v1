@@ -1,1 +1,95 @@
-<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurator tablouri electrice – V5</title><link rel="stylesheet" href="style.css"></head><body><header><div><h1>Configurator tablouri electrice</h1><p>V5 • configurare asistată după principii I7-2011</p></div><div class="step">Pasul 6 / Alegerea aparatajului</div></header><main><section class="top"><div class="board-head"><div><h2>Tablou electric</h2><div id="boardInfo"></div></div><div id="alert" class="alert"></div></div><div class="cabinet"><div class="din-wrap" id="rails"></div></div><div class="legend"><span>Trage aparatul pe șină pentru a-i schimba poziția</span><span>• Click pe aparat pentru modificare</span><span>• Pe mobil folosește butoanele din catalog</span></div></section><section class="bottom"><div class="catalog-head"><div><h2>Alege aparatajul</h2><p>Catalogul este grupat după utilizare. Aparatul ales poate avea orice lățime disponibilă; dacă nu încape pe șină, selecția este anulată automat.</p></div><div class="occupancy" id="occupancy"></div></div><div id="catalog"></div></section></main><div id="modal" class="modal hidden"><div class="modal-box"><button class="x" id="closeModal">×</button><h3>Modifică aparatul</h3><div id="modalBody"></div></div></div><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configurator tablouri electrice — V5</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <div class="eyebrow">CONFIGURATOR TABLOURI ELECTRICE</div>
+    <h1>Configurare tablou electric</h1>
+  </div>
+  <div class="step-pill" id="stepPill">Pasul 1 din 5</div>
+</header>
+
+<main class="wrap">
+  <section class="steps">
+    <button class="step active" data-step="1"><b>1</b><span>Branșament</span></button>
+    <button class="step" data-step="2"><b>2</b><span>Putere</span></button>
+    <button class="step" data-step="3"><b>3</b><span>Tablou</span></button>
+    <button class="step" data-step="4"><b>4</b><span>Aparataj</span></button>
+    <button class="step" data-step="5"><b>5</b><span>Verificare</span></button>
+  </section>
+
+  <section id="step1" class="step-panel">
+    <div class="panel-head">
+      <div><span class="kicker">PASUL 1</span><h2>Alege tipul de branșament</h2><p>Acesta influențează aparatajul și distribuția pe șine.</p></div>
+    </div>
+    <div class="choice-grid">
+      <button class="choice" data-connection="mono"><span class="choice-icon">1~</span><strong>Branșament monofazat</strong><small>230 V · L + N</small></button>
+      <button class="choice" data-connection="tri"><span class="choice-icon">3~</span><strong>Branșament trifazat</strong><small>400/230 V · L1 + L2 + L3 + N</small></button>
+    </div>
+    <div class="actions"><button class="primary" id="to2" disabled>Continuă →</button></div>
+  </section>
+
+  <section id="step2" class="step-panel hidden">
+    <div class="panel-head">
+      <div><span class="kicker">PASUL 2</span><h2>Alege puterea aprobată</h2><p>Alege valoarea din documentația de racordare.</p></div>
+    </div>
+    <div class="choice-grid power-grid" id="powerGrid"></div>
+    <div class="actions"><button class="secondary" id="back1">← Înapoi</button><button class="primary" id="to3" disabled>Continuă →</button></div>
+  </section>
+
+  <section id="step3" class="step-panel hidden">
+    <div class="panel-head">
+      <div><span class="kicker">PASUL 3</span><h2>Alege tabloul</h2><p>Alege capacitatea în module DIN. Configuratorul va verifica automat spațiul disponibil.</p></div>
+    </div>
+    <div class="board-grid" id="boardGrid"></div>
+    <div class="actions"><button class="secondary" id="back2">← Înapoi</button><button class="primary" id="to4" disabled>Continuă →</button></div>
+  </section>
+
+  <section id="step4" class="step-panel hidden">
+    <div class="panel-head compact">
+      <div><span class="kicker">PASUL 4</span><h2>Alege și poziționează aparatajul</h2><p>Sus ai tabloul și șinele DIN. Jos ai catalogul, grupat după utilizare.</p></div>
+      <div class="status-box"><span>OCUPARE</span><strong id="occupancy">0 / 0 module</strong><small id="occupancyText">Alege aparatele.</small></div>
+    </div>
+
+    <div class="cabinet-frame">
+      <div class="cabinet-title">
+        <strong id="cabinetTitle">Tablou</strong>
+        <span id="cabinetMeta"></span>
+      </div>
+      <div id="cabinet" class="cabinet"></div>
+      <div id="overflowMessage" class="overflow-message hidden"></div>
+    </div>
+
+    <div class="catalog-frame">
+      <div class="catalog-title">
+        <div><span class="kicker">CATALOG APARATAJ</span><h3>Selectează un aparat pentru a-l adăuga pe șină</h3></div>
+        <div class="catalog-note">Pictograma este identică cu cea de pe șină.</div>
+      </div>
+      <div id="catalog"></div>
+    </div>
+
+    <div class="actions">
+      <button class="secondary" id="back3">← Înapoi</button>
+      <button class="primary" id="to5">Verificare →</button>
+    </div>
+  </section>
+
+  <section id="step5" class="step-panel hidden">
+    <div class="panel-head">
+      <div><span class="kicker">PASUL 5</span><h2>Verificarea configurației</h2><p>Rezumatul configurației și avertismentele sunt afișate înainte de finalizare.</p></div>
+    </div>
+    <div id="summary"></div>
+    <div class="actions"><button class="secondary" id="back4">← Modifică aparatajul</button></div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
